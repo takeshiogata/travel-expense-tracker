@@ -11,23 +11,31 @@ from config import get_secret
 load_dotenv()
 
 
+_conn = None
+
+
 def get_connection():
+    global _conn
     url = get_secret("TURSO_DATABASE_URL")
     token = get_secret("TURSO_AUTH_TOKEN")
     if url and token:
-        conn = libsql.connect("expenses.db", sync_url=url, auth_token=token)
-        conn.sync()
+        if _conn is None:
+            _conn = libsql.connect("/tmp/expenses.db", sync_url=url, auth_token=token)
+            _conn.sync()
+        return _conn
     else:
         from pathlib import Path
         from config import DB_PATH
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-        conn = libsql.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+        return libsql.connect(DB_PATH)
+
+
+def _sync():
+    if _conn is not None:
+        _conn.sync()
 
 
 def _rows_to_dicts(cursor) -> list[dict]:
-    """Convert cursor results to list of dicts."""
     if cursor.description is None:
         return []
     columns = [d[0] for d in cursor.description]
@@ -35,7 +43,6 @@ def _rows_to_dicts(cursor) -> list[dict]:
 
 
 def _row_to_dict(cursor) -> dict | None:
-    """Convert single cursor result to dict."""
     if cursor.description is None:
         return None
     columns = [d[0] for d in cursor.description]
@@ -75,7 +82,7 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
+    _sync()
 
 
 # --- Thread operations ---
@@ -87,7 +94,7 @@ def create_thread(name: str | None = None) -> int:
     cur = conn.execute("INSERT INTO threads (name) VALUES (?)", (name,))
     thread_id = cur.lastrowid
     conn.commit()
-    conn.close()
+    _sync()
     return thread_id
 
 
@@ -98,17 +105,13 @@ def list_threads() -> list[dict]:
         "FROM threads t LEFT JOIN expenses e ON t.id = e.thread_id "
         "GROUP BY t.id ORDER BY t.created_at DESC"
     )
-    result = _rows_to_dicts(cur)
-    conn.close()
-    return result
+    return _rows_to_dicts(cur)
 
 
 def get_thread(thread_id: int) -> dict | None:
     conn = get_connection()
     cur = conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,))
-    result = _row_to_dict(cur)
-    conn.close()
-    return result
+    return _row_to_dict(cur)
 
 
 def rename_thread(thread_id: int, new_name: str):
@@ -118,14 +121,14 @@ def rename_thread(thread_id: int, new_name: str):
         (new_name, thread_id),
     )
     conn.commit()
-    conn.close()
+    _sync()
 
 
 def delete_thread(thread_id: int):
     conn = get_connection()
     conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
     conn.commit()
-    conn.close()
+    _sync()
 
 
 # --- Expense operations ---
@@ -142,7 +145,7 @@ def add_expense(thread_id: int, description: str, amount: int, category: str) ->
         (thread_id,),
     )
     conn.commit()
-    conn.close()
+    _sync()
     return expense_id
 
 
@@ -152,9 +155,7 @@ def get_expenses(thread_id: int) -> list[dict]:
         "SELECT * FROM expenses WHERE thread_id = ? ORDER BY created_at ASC",
         (thread_id,),
     )
-    result = _rows_to_dicts(cur)
-    conn.close()
-    return result
+    return _rows_to_dicts(cur)
 
 
 def update_expense(expense_id: int, description: str, amount: int, category: str):
@@ -164,7 +165,7 @@ def update_expense(expense_id: int, description: str, amount: int, category: str
         (description, amount, category, expense_id),
     )
     conn.commit()
-    conn.close()
+    _sync()
 
 
 def find_expense_by_description(thread_id: int, description: str) -> dict | None:
@@ -173,16 +174,14 @@ def find_expense_by_description(thread_id: int, description: str) -> dict | None
         "SELECT * FROM expenses WHERE thread_id = ? AND description LIKE ? ORDER BY created_at DESC LIMIT 1",
         (thread_id, f"%{description}%"),
     )
-    result = _row_to_dict(cur)
-    conn.close()
-    return result
+    return _row_to_dict(cur)
 
 
 def delete_expense(expense_id: int):
     conn = get_connection()
     conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
     conn.commit()
-    conn.close()
+    _sync()
 
 
 def get_expenses_summary(thread_id: int) -> list[dict]:
@@ -192,9 +191,7 @@ def get_expenses_summary(thread_id: int) -> list[dict]:
         "FROM expenses WHERE thread_id = ? GROUP BY category ORDER BY total DESC",
         (thread_id,),
     )
-    result = _rows_to_dicts(cur)
-    conn.close()
-    return result
+    return _rows_to_dicts(cur)
 
 
 # --- Message operations ---
@@ -206,7 +203,7 @@ def add_message(thread_id: int, role: str, content: str):
         (thread_id, role, content),
     )
     conn.commit()
-    conn.close()
+    _sync()
 
 
 def get_messages(thread_id: int) -> list[dict]:
@@ -215,6 +212,4 @@ def get_messages(thread_id: int) -> list[dict]:
         "SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC",
         (thread_id,),
     )
-    result = _rows_to_dicts(cur)
-    conn.close()
-    return result
+    return _rows_to_dicts(cur)
