@@ -1,5 +1,18 @@
 """Application configuration."""
 
+import os
+
+
+def get_secret(key: str, default: str = "") -> str:
+    """Get secret from st.secrets (Streamlit Cloud) or os.getenv (local)."""
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
 DEFAULT_CATEGORIES = [
     "交通費",
     "宿泊費",

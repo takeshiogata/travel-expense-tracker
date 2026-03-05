@@ -6,12 +6,14 @@ from datetime import datetime
 import libsql_experimental as libsql
 from dotenv import load_dotenv
 
+from config import get_secret
+
 load_dotenv()
 
 
 def get_connection():
-    url = os.getenv("TURSO_DATABASE_URL")
-    token = os.getenv("TURSO_AUTH_TOKEN")
+    url = get_secret("TURSO_DATABASE_URL")
+    token = get_secret("TURSO_AUTH_TOKEN")
     if url and token:
         conn = libsql.connect("expenses.db", sync_url=url, auth_token=token)
         conn.sync()

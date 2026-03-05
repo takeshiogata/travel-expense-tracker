@@ -6,7 +6,7 @@ import re
 
 from dotenv import load_dotenv
 
-from config import AI_PROVIDERS, SYSTEM_PROMPT
+from config import AI_PROVIDERS, SYSTEM_PROMPT, get_secret
 
 load_dotenv()
 
@@ -14,7 +14,7 @@ load_dotenv()
 def _call_claude(messages: list[dict], model: str) -> str:
     import anthropic
 
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    client = anthropic.Anthropic(api_key=get_secret("ANTHROPIC_API_KEY"))
     response = client.messages.create(
         model=model,
         max_tokens=2048,
@@ -27,7 +27,7 @@ def _call_claude(messages: list[dict], model: str) -> str:
 def _call_openai(messages: list[dict], model: str) -> str:
     import openai
 
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
     oai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     oai_messages.extend(messages)
     response = client.chat.completions.create(
