@@ -97,100 +97,21 @@ with col_rename:
             db.rename_thread(thread["id"], new_name)
             st.rerun()
 
-# Tabs for chat and summary
-tab_chat, tab_summary = st.tabs(["チャット", "集計・出力"])
+# --- Summary bar (always visible) ---
+expenses = db.get_expenses(thread["id"])
+if expenses:
+    total = sum(e["amount"] for e in expenses)
+    summary = db.get_expenses_summary(thread["id"])
+    category_text = " / ".join(f"{s['category']} ¥{s['total']:,}" for s in summary)
 
-# --- Chat tab ---
-with tab_chat:
-    messages = db.get_messages(thread["id"])
+    col_total, col_count = st.columns([1, 2])
+    with col_total:
+        st.metric("合計金額", f"¥{total:,}")
+    with col_count:
+        st.caption(f"{len(expenses)}件 | {category_text}")
 
-    # Display chat history
-    for msg in messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    # Chat input
-    if prompt := st.chat_input("経費を入力してください（例: 新幹線 14000円）"):
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        db.add_message(thread["id"], "user", prompt)
-
-        # Build conversation for AI
-        expenses = db.get_expenses(thread["id"])
-        context_parts = []
-        if expenses:
-            context_parts.append("【現在の経費一覧】")
-            total = 0
-            for exp in expenses:
-                date_str = f" [{exp['expense_date']}]" if exp.get('expense_date') else ""
-                context_parts.append(f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']}){date_str}")
-                total += exp["amount"]
-            context_parts.append(f"合計: ¥{total:,}")
-            context_parts.append("")
-
-        ai_messages = []
-        for msg in messages:
-            ai_messages.append({"role": msg["role"], "content": msg["content"]})
-
-        user_content = prompt
-        if context_parts:
-            user_content = "\n".join(context_parts) + "\n\n" + prompt
-
-        ai_messages.append({"role": "user", "content": user_content})
-
-        # Call AI
-        with st.chat_message("assistant"):
-            with st.spinner("考え中..."):
-                try:
-                    response = ai_client.chat(ai_messages, st.session_state.ai_provider)
-
-                    # Extract and process edits or new expenses
-                    edits = ai_client.extract_edits(response)
-                    new_expenses = ai_client.extract_expenses(response)
-
-                    edited_items = []
-                    for edit in edits:
-                        existing = db.find_expense_by_description(thread["id"], edit["original_description"])
-                        if existing:
-                            db.update_expense(existing["id"], edit["description"], edit["amount"], edit["category"], edit.get("date"))
-                            edited_items.append(edit)
-
-                    for exp in new_expenses:
-                        db.add_expense(
-                            thread["id"],
-                            exp["description"],
-                            exp["amount"],
-                            exp["category"],
-                            exp.get("date"),
-                        )
-
-                    # Display clean response
-                    display_text = ai_client.remove_json_blocks(response)
-                    if edited_items:
-                        display_text += "\n\n**編集しました:**\n"
-                        for edit in edited_items:
-                            display_text += f"- {edit['description']}: ¥{edit['amount']:,} ({edit['category']})\n"
-                    if new_expenses:
-                        display_text += "\n\n**記録しました:**\n"
-                        for exp in new_expenses:
-                            display_text += f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']})\n"
-
-                    st.markdown(display_text)
-                    db.add_message(thread["id"], "assistant", display_text)
-
-                except Exception as e:
-                    error_msg = f"エラーが発生しました: {str(e)}"
-                    st.error(error_msg)
-                    db.add_message(thread["id"], "assistant", error_msg)
-
-# --- Summary tab ---
-with tab_summary:
-    expenses = db.get_expenses(thread["id"])
-
-    if not expenses:
-        st.info("まだ経費が記録されていません。チャットタブで経費を入力してください。")
-    else:
+    # Expandable detail section
+    with st.expander("詳細テーブル・データ出力"):
         # Expense table
         st.subheader("経費一覧")
         df = pd.DataFrame(expenses)
@@ -202,20 +123,14 @@ with tab_summary:
 
         # Summary by category
         st.subheader("カテゴリ別集計")
-        summary = db.get_expenses_summary(thread["id"])
         df_summary = pd.DataFrame(summary)
         df_summary.columns = ["カテゴリ", "件数", "合計"]
         df_summary["合計"] = df_summary["合計"].apply(lambda x: f"¥{x:,}")
         st.dataframe(df_summary, use_container_width=True, hide_index=True)
 
-        # Total
-        total = sum(e["amount"] for e in expenses)
-        st.metric("合計金額", f"¥{total:,}")
-
         st.divider()
 
         # CSV download
-        st.subheader("データ出力")
         df_export = pd.DataFrame(expenses)
         df_export = df_export[["expense_date", "description", "amount", "category", "created_at"]]
         df_export.columns = ["日付", "項目", "金額", "カテゴリ", "記録日時"]
@@ -237,8 +152,93 @@ with tab_summary:
         for exp in expenses:
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.text(f"{exp['description']}: ¥{exp['amount']:,} ({exp['category']})")
+                date_label = f" [{exp['expense_date']}]" if exp.get("expense_date") else ""
+                st.text(f"{exp['description']}: ¥{exp['amount']:,} ({exp['category']}){date_label}")
             with col2:
                 if st.button("削除", key=f"del_exp_{exp['id']}"):
                     db.delete_expense(exp["id"])
                     st.rerun()
+
+st.divider()
+
+# --- Chat area ---
+messages = db.get_messages(thread["id"])
+
+# Display chat history
+for msg in messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Chat input
+if prompt := st.chat_input("経費を入力してください（例: 新幹線 14000円）"):
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    db.add_message(thread["id"], "user", prompt)
+
+    # Build conversation for AI
+    context_parts = []
+    if expenses:
+        context_parts.append("【現在の経費一覧】")
+        total = 0
+        for exp in expenses:
+            date_str = f" [{exp['expense_date']}]" if exp.get('expense_date') else ""
+            context_parts.append(f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']}){date_str}")
+            total += exp["amount"]
+        context_parts.append(f"合計: ¥{total:,}")
+        context_parts.append("")
+
+    ai_messages = []
+    for msg in messages:
+        ai_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    user_content = prompt
+    if context_parts:
+        user_content = "\n".join(context_parts) + "\n\n" + prompt
+
+    ai_messages.append({"role": "user", "content": user_content})
+
+    # Call AI
+    with st.chat_message("assistant"):
+        with st.spinner("考え中..."):
+            try:
+                response = ai_client.chat(ai_messages, st.session_state.ai_provider)
+
+                # Extract and process edits or new expenses
+                edits = ai_client.extract_edits(response)
+                new_expenses = ai_client.extract_expenses(response)
+
+                edited_items = []
+                for edit in edits:
+                    existing = db.find_expense_by_description(thread["id"], edit["original_description"])
+                    if existing:
+                        db.update_expense(existing["id"], edit["description"], edit["amount"], edit["category"], edit.get("date"))
+                        edited_items.append(edit)
+
+                for exp in new_expenses:
+                    db.add_expense(
+                        thread["id"],
+                        exp["description"],
+                        exp["amount"],
+                        exp["category"],
+                        exp.get("date"),
+                    )
+
+                # Display clean response
+                display_text = ai_client.remove_json_blocks(response)
+                if edited_items:
+                    display_text += "\n\n**編集しました:**\n"
+                    for edit in edited_items:
+                        display_text += f"- {edit['description']}: ¥{edit['amount']:,} ({edit['category']})\n"
+                if new_expenses:
+                    display_text += "\n\n**記録しました:**\n"
+                    for exp in new_expenses:
+                        display_text += f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']})\n"
+
+                st.markdown(display_text)
+                db.add_message(thread["id"], "assistant", display_text)
+
+            except Exception as e:
+                error_msg = f"エラーが発生しました: {str(e)}"
+                st.error(error_msg)
+                db.add_message(thread["id"], "assistant", error_msg)
