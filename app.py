@@ -18,6 +18,12 @@ st.markdown("""
 <style>
     /* Prevent horizontal scroll on dataframes */
     [data-testid="stDataFrame"] > div { overflow-x: hidden !important; }
+    /* Ensure date column is not truncated */
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+    }
     /* Wider metric value */
     [data-testid="stMetricValue"] { font-size: 2rem; }
 </style>
@@ -143,7 +149,15 @@ with col_summary:
             df_display = df[["expense_date", "description", "amount", "category"]].copy()
             df_display.columns = ["日付", "項目", "金額", "カテゴリ"]
             df_display["金額"] = df_display["金額"].apply(lambda x: f"¥{x:,}")
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "日付": st.column_config.TextColumn("日付", width="medium"),
+                    "金額": st.column_config.TextColumn("金額", width="small"),
+                },
+            )
 
         # Category summary
         summary = db.get_expenses_summary(thread["id"])
