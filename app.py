@@ -14,6 +14,15 @@ db.init_db()
 
 st.set_page_config(page_title="旅行経費トラッカー", page_icon="", layout="wide")
 
+st.markdown("""
+<style>
+    /* Prevent horizontal scroll on dataframes */
+    [data-testid="stDataFrame"] > div { overflow-x: hidden !important; }
+    /* Wider metric value */
+    [data-testid="stMetricValue"] { font-size: 2rem; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # --- Session state defaults ---
 if "current_thread_id" not in st.session_state:
@@ -101,7 +110,7 @@ with col_rename:
 expenses = db.get_expenses(thread["id"])
 messages = db.get_messages(thread["id"])
 
-col_chat, col_summary = st.columns([3, 2])
+col_chat, col_summary = st.columns([1, 1])
 
 # --- Left: Chat ---
 with col_chat:
@@ -120,15 +129,21 @@ with col_summary:
         total = sum(e["amount"] for e in expenses)
         st.metric("合計金額", f"¥{total:,}")
 
+        # Sort control
+        sort_options = {"日付 昇順": ("expense_date", True), "日付 降順": ("expense_date", False), "金額 昇順": ("amount", True), "金額 降順": ("amount", False)}
+        sort_label = st.selectbox("並び替え", list(sort_options.keys()), index=0, key="sort_select")
+        sort_col, sort_asc = sort_options[sort_label]
+
         # Expense table
         summary_container = st.container(height=200)
         with summary_container:
             df = pd.DataFrame(expenses)
-            df = df[["expense_date", "description", "amount", "category"]]
-            df.columns = ["日付", "項目", "金額", "カテゴリ"]
-            df["日付"] = df["日付"].fillna("")
-            df["金額"] = df["金額"].apply(lambda x: f"¥{x:,}")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            df["expense_date"] = df["expense_date"].fillna("")
+            df = df.sort_values(sort_col, ascending=sort_asc, na_position="last")
+            df_display = df[["expense_date", "description", "amount", "category"]].copy()
+            df_display.columns = ["日付", "項目", "金額", "カテゴリ"]
+            df_display["金額"] = df_display["金額"].apply(lambda x: f"¥{x:,}")
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
 
         # Category summary
         summary = db.get_expenses_summary(thread["id"])
