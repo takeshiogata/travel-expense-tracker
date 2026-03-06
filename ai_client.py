@@ -60,6 +60,7 @@ def extract_expenses(text: str) -> list[dict]:
                         "description": str(exp["description"]),
                         "amount": int(exp["amount"]),
                         "category": str(exp["category"]),
+                        "date": str(exp["date"]) if exp.get("date") and exp["date"] != "null" else None,
                     })
         except (json.JSONDecodeError, ValueError, TypeError):
             continue
@@ -81,6 +82,7 @@ def extract_edits(text: str) -> list[dict]:
                         "description": str(edit["description"]),
                         "amount": int(edit["amount"]),
                         "category": str(edit["category"]),
+                        "date": str(edit["date"]) if edit.get("date") and edit["date"] != "null" else None,
                     })
         except (json.JSONDecodeError, ValueError, TypeError):
             continue

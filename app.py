@@ -123,7 +123,8 @@ with tab_chat:
             context_parts.append("【現在の経費一覧】")
             total = 0
             for exp in expenses:
-                context_parts.append(f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']})")
+                date_str = f" [{exp['expense_date']}]" if exp.get('expense_date') else ""
+                context_parts.append(f"- {exp['description']}: ¥{exp['amount']:,} ({exp['category']}){date_str}")
                 total += exp["amount"]
             context_parts.append(f"合計: ¥{total:,}")
             context_parts.append("")
@@ -152,7 +153,7 @@ with tab_chat:
                     for edit in edits:
                         existing = db.find_expense_by_description(thread["id"], edit["original_description"])
                         if existing:
-                            db.update_expense(existing["id"], edit["description"], edit["amount"], edit["category"])
+                            db.update_expense(existing["id"], edit["description"], edit["amount"], edit["category"], edit.get("date"))
                             edited_items.append(edit)
 
                     for exp in new_expenses:
@@ -161,6 +162,7 @@ with tab_chat:
                             exp["description"],
                             exp["amount"],
                             exp["category"],
+                            exp.get("date"),
                         )
 
                     # Display clean response
@@ -192,8 +194,9 @@ with tab_summary:
         # Expense table
         st.subheader("経費一覧")
         df = pd.DataFrame(expenses)
-        df = df[["description", "amount", "category", "created_at"]]
-        df.columns = ["項目", "金額", "カテゴリ", "記録日時"]
+        df = df[["expense_date", "description", "amount", "category", "created_at"]]
+        df.columns = ["日付", "項目", "金額", "カテゴリ", "記録日時"]
+        df["日付"] = df["日付"].fillna("")
         df["金額"] = df["金額"].apply(lambda x: f"¥{x:,}")
         st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -214,8 +217,8 @@ with tab_summary:
         # CSV download
         st.subheader("データ出力")
         df_export = pd.DataFrame(expenses)
-        df_export = df_export[["description", "amount", "category", "created_at"]]
-        df_export.columns = ["項目", "金額", "カテゴリ", "記録日時"]
+        df_export = df_export[["expense_date", "description", "amount", "category", "created_at"]]
+        df_export.columns = ["日付", "項目", "金額", "カテゴリ", "記録日時"]
 
         csv_buffer = io.StringIO()
         df_export.to_csv(csv_buffer, index=False)

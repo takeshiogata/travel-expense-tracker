@@ -67,10 +67,17 @@ def init_db():
             description TEXT NOT NULL,
             amount INTEGER NOT NULL,
             category TEXT NOT NULL,
+            expense_date TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
         )
     """)
+    # Migration: add expense_date column if missing
+    try:
+        conn.execute("ALTER TABLE expenses ADD COLUMN expense_date TEXT")
+        conn.commit()
+    except Exception:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,11 +140,11 @@ def delete_thread(thread_id: int):
 
 # --- Expense operations ---
 
-def add_expense(thread_id: int, description: str, amount: int, category: str) -> int:
+def add_expense(thread_id: int, description: str, amount: int, category: str, expense_date: str | None = None) -> int:
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO expenses (thread_id, description, amount, category) VALUES (?, ?, ?, ?)",
-        (thread_id, description, amount, category),
+        "INSERT INTO expenses (thread_id, description, amount, category, expense_date) VALUES (?, ?, ?, ?, ?)",
+        (thread_id, description, amount, category, expense_date),
     )
     expense_id = cur.lastrowid
     conn.execute(
@@ -158,11 +165,11 @@ def get_expenses(thread_id: int) -> list[dict]:
     return _rows_to_dicts(cur)
 
 
-def update_expense(expense_id: int, description: str, amount: int, category: str):
+def update_expense(expense_id: int, description: str, amount: int, category: str, expense_date: str | None = None):
     conn = get_connection()
     conn.execute(
-        "UPDATE expenses SET description = ?, amount = ?, category = ? WHERE id = ?",
-        (description, amount, category, expense_id),
+        "UPDATE expenses SET description = ?, amount = ?, category = ?, expense_date = ? WHERE id = ?",
+        (description, amount, category, expense_date, expense_id),
     )
     conn.commit()
     _sync()
