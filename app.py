@@ -183,8 +183,11 @@ if prompt := st.chat_input("経費を入力してください（例: 新幹線 1
         context_parts.append(f"合計: ¥{exp_total:,}")
         context_parts.append("")
 
+    MAX_HISTORY = 10  # 直近N往復(20メッセージ)のみAIに送信
+    recent_messages = messages[-(MAX_HISTORY * 2):]
+
     ai_messages = []
-    for msg in messages:
+    for msg in recent_messages:
         ai_messages.append({"role": msg["role"], "content": msg["content"]})
 
     user_content = prompt
